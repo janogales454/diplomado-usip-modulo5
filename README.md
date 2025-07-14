@@ -8,14 +8,6 @@
 pip install -r requirements.txt
 ```
 
-## Cargar datos iniciales
-
-- Se recomienda asegurarse de crear estructas de base de datos necesarias previamente
-
-```sh
-python manage.py loaddata dump_cartelera
-```
-
 ## Ejecutar servidor de desarrollo
 
 ```sh
