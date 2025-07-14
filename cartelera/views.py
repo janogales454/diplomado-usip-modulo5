@@ -30,6 +30,7 @@ class FuncionViewSet(viewsets.ModelViewSet):
     queryset = Funcion.objects.all()
     serializer_class = FuncionSerializer
 
+    ## Se agrego diferentes serializers para que el Swagger permita emplear las estructuras de request apropiadas de acuerdo al metodo.
     def get_serializer_class(self):
         if self.action == 'create':
             return CrearFuncionSerializer
@@ -164,6 +165,7 @@ class FuncionViewSet(viewsets.ModelViewSet):
         return self.update(request, pk)
 
 
+## Retorna una lista de las funciones disponibles.
 @api_view(['GET'])
 def lista_funciones_disponibles(request):
     try:
@@ -178,7 +180,8 @@ def lista_funciones_disponibles(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-
+## Revisa las funciones disponibles y cambia su estado si la pelicula ya no está disponible en cartelera.
+## Podria ser ejecutado por una tarea de fondo para mantener actualizada la lista de funciones disponibles.
 @api_view(['GET'])
 def actualizar_funciones_disponibles(request):
     try:
@@ -298,14 +301,13 @@ def buscar_venta(request, id):
 @api_view(['PUT','PATCH'])
 def actualizar_venta(request, id):
     try:
-        serializer = CrearVentaSerializer(data=request.data)
+        serializer = ActualizarVentaSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         venta = Venta.objects.get(id=id)
         if not venta:
             raise ValueError("Venta no encontrada")
         
-        cantidad_boletos = venta.cantidad_boletos
         nombre_cliente = venta.nombre_cliente
         email = venta.email
         nit = venta.nit
@@ -317,12 +319,10 @@ def actualizar_venta(request, id):
         if request.data.get('nit') is not None:
             nit = utils.convert_str_to_int(request.data.get('nit'))
 
-        venta = Venta(
-            cantidad_boletos=cantidad_boletos,
-            nombre_cliente=nombre_cliente,
-            nit=nit,
-            email=email,
-        )
+        venta.nombre_cliente = nombre_cliente
+        venta.email = email
+        venta.nit = nit
+        
         venta.save()
         return JsonResponse(
             VentaSerializer(venta).data,
@@ -342,9 +342,9 @@ def borrar_venta(request, id):
         if not venta:
             raise ValueError("Venta no encontrada")
         venta.delete()
-        return JsonResponse({"message": "Venta eliminada correctamente"}, status=status.HTTP_204_NO_CONTENT)
+        return JsonResponse({"message": "Venta eliminada correctamente"}, status=status.HTTP_200_OK)
     except Exception as ex:
-        logger.error(f"Error al eliminar la venta: {str(ex)}")
+        logger.error(f"Error al eliminar la venta con id {id}: {str(ex)}")
         return JsonResponse(
             {"error": str(ex)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR

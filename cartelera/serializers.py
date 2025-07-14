@@ -73,7 +73,6 @@ class CrearVentaSerializer(serializers.Serializer):
     fecha_funcion = serializers.DateField(required=True, allow_null=False)
 
 class ActualizarVentaSerializer(serializers.Serializer):
-    cantidad_boletos = serializers.IntegerField()
     nombre_cliente = serializers.CharField(max_length=100, required=False, allow_blank=True, default='Cliente Anónimo')
     email = serializers.CharField(max_length=100, required=False, allow_blank=True, default='example@email.com')
     nit = serializers.IntegerField(required=False, allow_null=True)
