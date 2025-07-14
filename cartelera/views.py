@@ -30,7 +30,8 @@ class FuncionViewSet(viewsets.ModelViewSet):
     queryset = Funcion.objects.all()
     serializer_class = FuncionSerializer
 
-    ## Se agrego diferentes serializers para que el Swagger permita emplear las estructuras de request apropiadas de acuerdo al metodo.
+    ## Se agrego diferentes serializers para que se pueda emplear estructuras de request con ID de clave foranea.
+    ## Que ademas se refleje al consultar ejemplos en Swagger.
     def get_serializer_class(self):
         if self.action == 'create':
             return CrearFuncionSerializer
@@ -211,6 +212,8 @@ def actualizar_funciones_disponibles(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+## Similar que con metodos de Funcion, se tiene serializars distintos para registro y actualizacion de ventas.
+## Para que se maneje una estructura de request mas adecuada.
 @swagger_auto_schema(method='post',request_body=CrearVentaSerializer)
 @api_view(['POST'])
 def venta_boleto(request):
@@ -273,6 +276,7 @@ def venta_boleto(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+## Retorna una lista de las ventas realizadas.
 @api_view(['GET'])
 def lista_ventas(request):
     try:
@@ -285,6 +289,7 @@ def lista_ventas(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+## Retorna una venta por su id que es proporcionado por la url.
 @api_view(['GET'])
 def buscar_venta(request, id):
     try:
@@ -297,6 +302,8 @@ def buscar_venta(request, id):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+## Metodo para actualizar datos de venta, por metodo PUT y PATCH.
+## Solo se pertmite actualizar el nombre del cliente, email y nit de la venta.
 @swagger_auto_schema(methods=['put','patch'],request_body=ActualizarVentaSerializer)
 @api_view(['PUT','PATCH'])
 def actualizar_venta(request, id):
