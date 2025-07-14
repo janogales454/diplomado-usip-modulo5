@@ -55,22 +55,28 @@ class FuncionViewSet(viewsets.ModelViewSet):
                 raise ValueError("Película no encontrada")
             
             hora = utils.convert_str_to_datetime(request.data.get('hora'), constants.TIME_FORMAT).time()
-            fecha_inicio = utils.convert_str_to_datetime(request.data.get('fecha_inicio'), constants.DATE_FORMAT).date()
-            fecha_fin = utils.convert_str_to_datetime(request.data.get('fecha_fin'), constants.DATE_FORMAT).date()
-            if fecha_inicio >= fecha_fin:
-                raise ValueError("La fecha de inicio no puede ser mayor a la fecha de fin")
-            
             tipo_funcion = request.data.get('tipo_funcion')
+            if tipo_funcion is None or tipo_funcion.isspace():
+                raise ValueError("El tipo de funcion no puede estar vacio")
             precio = utils.convert_str_to_float(request.data.get('precio'))
             if precio <= 0:
                 raise ValueError("El precio debe ser un número mayor a cero")
+
+            if timezone.now().date() > pelicula.fecha_retiro:
+                raise ValueError("La película ya fue retirada y no se pueden crear más funciones")
+            
+            funciones_existentes = Funcion.objects.filter(
+                sala_id=sala_id,
+                hora=hora,
+                disponible=True,
+            ).count()
+            if funciones_existentes > 0:
+                raise ValueError("Ya existe una función programada en esta sala a esta hora")
 
             funcion = Funcion(
                 sala_id=sala_id,
                 pelicula_id=pelicula_id,
                 hora=hora,
-                fecha_inicio=fecha_inicio,
-                fecha_fin=fecha_fin,
                 tipo_funcion=tipo_funcion,
                 precio=precio
             )
@@ -98,10 +104,9 @@ class FuncionViewSet(viewsets.ModelViewSet):
             sala_id = funcion.sala.id
             pelicula_id = funcion.pelicula.id
             hora = funcion.hora
-            fecha_inicio = funcion.fecha_inicio
-            fecha_fin = funcion.fecha_fin
             tipo_funcion = funcion.tipo_funcion
             precio = funcion.precio
+            disponible = funcion.disponible
 
             if request.data.get('sala_id') is not None:
                 sala_id = utils.convert_str_to_int(request.data.get('sala_id'))
@@ -109,14 +114,12 @@ class FuncionViewSet(viewsets.ModelViewSet):
                 pelicula_id = utils.convert_str_to_int(request.data.get('pelicula_id'))
             if request.data.get('hora') is not None:
                 hora = utils.convert_str_to_datetime(request.data.get('hora'), constants.TIME_FORMAT).time()
-            if request.data.get('fecha_inicio') is not None:
-                fecha_inicio = utils.convert_str_to_datetime(request.data.get('fecha_inicio'), constants.DATE_FORMAT).date()
-            if request.data.get('fecha_fin') is not None:
-                fecha_fin = utils.convert_str_to_datetime(request.data.get('fecha_fin'), constants.DATE_FORMAT).date()
             if request.data.get('tipo_funcion') is not None:
                 tipo_funcion = request.data.get('tipo_funcion')
             if request.data.get('precio') is not None:
                 precio = utils.convert_str_to_float(request.data.get('precio'))
+            if request.data.get('disponible') is not None:
+                disponible = utils.convert_str_to_bool(request.data.get('disponible'))
             
             sala = Sala.objects.get(id=sala_id)
             if not sala:
@@ -124,18 +127,26 @@ class FuncionViewSet(viewsets.ModelViewSet):
             pelicula = Pelicula.objects.get(id=pelicula_id)
             if not pelicula:
                 raise ValueError("Película no encontrada")
-            if fecha_inicio >= fecha_fin:
-                raise ValueError("La fecha de inicio no puede ser mayor a la fecha de fin")
             if precio <= 0:
                 raise ValueError("El precio debe ser un número mayor a cero")
+            
+            if timezone.now().date() > pelicula.fecha_retiro:
+                raise ValueError("La película ya fue retirada y no se pueden crear más funciones")
+            
+            funciones_existentes = Funcion.objects.filter(
+                sala_id=sala_id,
+                hora=hora,
+                disponible=True,
+            ).count()
+            if funciones_existentes > 0:
+                raise ValueError("Ya existe una función programada en esta sala a esta hora")
             
             funcion.sala_id = sala_id
             funcion.pelicula_id = pelicula_id
             funcion.hora = hora
-            funcion.fecha_inicio = fecha_inicio
-            funcion.fecha_fin = fecha_fin
             funcion.tipo_funcion = tipo_funcion
             funcion.precio = precio
+            funcion.disponible = disponible
             
             funcion.save()
             return JsonResponse(
@@ -152,6 +163,50 @@ class FuncionViewSet(viewsets.ModelViewSet):
     def partial_update(self, request, pk):
         return self.update(request, pk)
 
+
+@api_view(['GET'])
+def lista_funciones_disponibles(request):
+    try:
+        funciones = Funcion.objects.filter(disponible=True,pelicula__fecha_retiro__gte=timezone.now().date())
+        if not funciones:
+            raise ValueError("No hay funciones disponibles")
+        serializer = FuncionSerializer(funciones, many=True)
+        return JsonResponse(serializer.data, safe=False, status=status.HTTP_200_OK)
+    except Exception as ex:
+        return JsonResponse(
+            {"error": str(ex)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def actualizar_funciones_disponibles(request):
+    try:
+        funciones = Funcion.objects.filter(disponible=True)
+        if not funciones:
+            raise ValueError("No hay funciones disponibles")
+        if funciones.count() > 0:
+            count = 0
+            for funcion in funciones:
+                try:
+                    pelicula = Pelicula.objects.get(id=funcion.pelicula_id)
+                    if not pelicula:
+                        raise ValueError("Película de la función no encontrada")
+                    if timezone.now().date() > pelicula.fecha_retiro:
+                        funcion.disponible = False
+                        funcion.save()
+                        count += 1
+                except Exception as ex:
+                    logger.error(f"Error al actualizar la función {funcion.id}: {str(ex)}")
+                    continue
+            return JsonResponse({
+                "message": f"{count} funciones de {funciones.count()} actualizadas correctamente",
+            }, status=status.HTTP_200_OK)
+    except Exception as ex:
+        return JsonResponse(
+            {"error": str(ex)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 @swagger_auto_schema(method='post',request_body=CrearVentaSerializer)
 @api_view(['POST'])
@@ -170,13 +225,15 @@ def venta_boleto(request):
             raise ValueError("El nombre del cliente no puede estar vacío")
         if fecha_funcion < timezone.now().date():
             raise ValueError("La fecha de la función no puede ser anterior a la fecha actual")
-        funcion = Funcion.objects.get(id=funcion_id)
-        if funcion.fecha_inicio > fecha_funcion or fecha_funcion > funcion.fecha_fin:
-            raise ValueError("La función aun no esta disponible o ya ha finalizado")
-        
         funcion = Funcion.objects.filter(id=funcion_id).first()
         if not funcion:
             raise ValueError("Función no encontrada")
+        pelicula = Pelicula.objects.get(id=funcion.pelicula_id)
+        if not pelicula:
+            raise ValueError("Película de la función no encontrada")
+        if pelicula.fecha_lanzamiento > fecha_funcion or fecha_funcion > pelicula.fecha_retiro:
+            raise ValueError("La función aun no esta disponible o ya ha finalizado")
+        
         sala = Sala.objects.get(id=funcion.sala_id)
         if not sala:
             raise ValueError("Sala de la funcion no encontrada")
@@ -280,4 +337,15 @@ def actualizar_venta(request, id):
 
 @api_view(['DELETE'])
 def borrar_venta(request, id):
-    return JsonResponse({}, safe=False, status=status.HTTP_200_OK)
+    try:
+        venta = Venta.objects.get(id=id)
+        if not venta:
+            raise ValueError("Venta no encontrada")
+        venta.delete()
+        return JsonResponse({"message": "Venta eliminada correctamente"}, status=status.HTTP_204_NO_CONTENT)
+    except Exception as ex:
+        logger.error(f"Error al eliminar la venta: {str(ex)}")
+        return JsonResponse(
+            {"error": str(ex)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

@@ -18,3 +18,14 @@ def convert_str_to_float(value_str):
         return float(value_str)
     except ValueError:
         raise ValueError(f"El valor '{value_str}' no es un número float válido.")
+
+def convert_str_to_bool(value_str):
+    try:
+        if value_str.lower() in ['true', '1', 'yes']:
+            return True
+        elif value_str.lower() in ['false', '0', 'no']:
+            return False
+        else:
+            raise ValueError(f"El valor '{value_str}' no es un booleano válido.")
+    except ValueError:
+        raise ValueError(f"El valor '{value_str}' no es un entero válido.")
